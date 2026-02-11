@@ -40,35 +40,6 @@ A lightweight macOS menu bar app that displays your upcoming calendar events in 
 4. Grant calendar access when prompted
 5. Click the calendar icon in your menu bar
 
-## Project Structure
-
-```
-cali/
-├── CaliApp.swift                  # App entry point (MenuBarExtra + Settings window)
-├── Cali.entitlements              # Sandbox & calendar permissions
-├── Models/
-│   ├── AppSettings.swift          # User preferences (UserDefaults + login items)
-│   └── CalendarEvent.swift        # Calendar event model wrapping EKEvent
-├── Services/
-│   ├── CalendarService.swift      # EventKit integration (auth, fetch, calendars)
-│   └── MeetingLinkParser.swift    # Regex-based meeting URL extraction
-├── ViewModels/
-│   └── MenuBarViewModel.swift     # Central state management and business logic
-└── Views/
-    ├── MenuBarView.swift          # Main popup view with header, timeline, footer
-    ├── CalendarTimelineView.swift # Hour grid + positioned event blocks + overlap engine
-    ├── EventBlockView.swift       # Individual event block in the timeline
-    ├── EventDetailPopover.swift   # Inline detail card for selected events
-    ├── EmptyStateView.swift       # Empty state when no events exist
-    ├── PermissionView.swift       # Calendar access request prompt
-    ├── SettingsView.swift         # Settings window with sidebar navigation
-    └── Settings/
-        ├── PreferencesSettingsView.swift  # Login & auto-join toggles
-        ├── CalendarSettingsView.swift     # Visible hour range
-        ├── MenuBarSettingsView.swift      # Menu bar display options
-        └── CalendarsSettingsView.swift    # Per-calendar toggle list
-```
-
 ## Permissions
 
 Cali requires **Full Calendar Access** to read your events. The app runs sandboxed with only the following entitlements:
