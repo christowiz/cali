@@ -1,7 +1,5 @@
 # Cali
 
-## NOTE
-
 > [!NOTE]
 > This is basicaly a clone of [dottt.app](https://dottt.app/) for personal use
 
