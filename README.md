@@ -1,7 +1,7 @@
 # Cali
 
 > [!NOTE]
-> This is basicaly a clone of [dottt.app](https://dottt.app/) for personal use
+> This is basicaly a clone of https://dottt.app for personal use
 
 A lightweight macOS menu bar app that displays your upcoming calendar events in a clean timeline view.
 
