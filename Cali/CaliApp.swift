@@ -1,6 +1,6 @@
 //
-//  caliApp.swift
-//  cali
+//  CaliApp.swift
+//  Cali
 //
 //  Created by Christopher Gwizdala on 2/10/26.
 //
@@ -15,8 +15,10 @@ struct CaliApp: App {
         MenuBarExtra {
             MenuBarView(viewModel: viewModel)
         } label: {
-            Label(viewModel.menuBarTitle, systemImage: "beach.umbrella.fill")
-                .task { await viewModel.start() }
+            Image(systemName: "beach.umbrella.fill")
+            if !viewModel.menuBarTitle.isEmpty {
+                Text(viewModel.menuBarTitle)
+            }
         }
         .menuBarExtraStyle(.window)
 

@@ -29,7 +29,8 @@ struct SettingsView: View {
                 case .calendars:
                     CalendarsSettingsView(
                         calendarService: viewModel.calendarService,
-                        settings: viewModel.settings
+                        settings: viewModel.settings,
+                        onCalendarToggled: { viewModel.refresh() }
                     )
                 }
             }

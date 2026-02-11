@@ -119,6 +119,16 @@ struct MenuBarView: View {
             Spacer()
 
             HStack(spacing: 4) {
+                Button(action: { viewModel.refresh() }) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .frame(width: 26, height: 26)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Refresh calendars")
+
                 Button(action: { viewModel.navigateDay(by: -1) }) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 11, weight: .semibold))
@@ -229,6 +239,8 @@ private final class PanelResizerView: NSView {
     private static let panelWidth: CGFloat = 440
     private static let minHeight: CGFloat = 300
 
+    private var frameObserver: NSObjectProtocol?
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         configurePanel()
@@ -240,6 +252,9 @@ private final class PanelResizerView: NSView {
         // Force dark appearance
         window.appearance = NSAppearance(named: .darkAqua)
 
+        // Keep the popup visible when another window (e.g. Settings) is active
+        window.hidesOnDeactivate = false
+
         // Enable vertical-only resize (lock width, allow height)
         window.styleMask.insert(.resizable)
 
@@ -250,11 +265,35 @@ private final class PanelResizerView: NSView {
         window.minSize = NSSize(width: Self.panelWidth, height: Self.minHeight)
         window.maxSize = NSSize(width: Self.panelWidth, height: screenHeight)
 
-        // Ensure width stays locked after any resize
+        // Lock width immediately
+        enforceWidth(on: window)
+
+        // Observe frame changes to enforce width on every resize
+        frameObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResizeNotification,
+            object: window,
+            queue: .main
+        ) { [weak window] _ in
+            guard let window else { return }
+            if window.frame.width != PanelResizerView.panelWidth {
+                var frame = window.frame
+                frame.size.width = PanelResizerView.panelWidth
+                window.setFrame(frame, display: false)
+            }
+        }
+    }
+
+    private func enforceWidth(on window: NSWindow) {
         if window.frame.width != Self.panelWidth {
             var frame = window.frame
             frame.size.width = Self.panelWidth
             window.setFrame(frame, display: true)
+        }
+    }
+
+    deinit {
+        if let observer = frameObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 }

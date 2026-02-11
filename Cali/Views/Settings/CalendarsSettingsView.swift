@@ -9,6 +9,7 @@ import SwiftUI
 struct CalendarsSettingsView: View {
     let calendarService: CalendarService
     @Bindable var settings: AppSettings
+    var onCalendarToggled: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -68,7 +69,10 @@ struct CalendarsSettingsView: View {
 
             Toggle("", isOn: Binding(
                 get: { settings.isCalendarEnabled(calendar.calendarIdentifier) },
-                set: { _ in settings.toggleCalendar(calendar.calendarIdentifier) }
+                set: { _ in
+                    settings.toggleCalendar(calendar.calendarIdentifier)
+                    onCalendarToggled?()
+                }
             ))
             .toggleStyle(.switch)
             .labelsHidden()

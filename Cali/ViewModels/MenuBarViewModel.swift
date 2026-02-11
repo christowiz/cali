@@ -16,7 +16,7 @@ final class MenuBarViewModel {
     let calendarService = CalendarService()
     let settings = AppSettings()
 
-    var menuBarTitle: String = "Cali"
+    var menuBarTitle: String = ""
     var currentDate = Date()
     var selectedDate = Date()
     var activeMeeting: CalendarEvent?
@@ -66,10 +66,22 @@ final class MenuBarViewModel {
     // MARK: - Private
 
     private var hasStarted = false
-    private var refreshTimer: Timer?
-    private var countdownTimer: Timer?
+    private var titleTimer: Timer?       // 1-second: menu bar title + auto-join
+    private var clockTimer: Timer?       // 10-second: time indicator + event cache
+    private var refreshTimer: Timer?     // 5-minute: full calendar refresh
     private var eventStoreObserver: Any?
     private var autoJoinedEventIDs: Set<String> = []
+
+    /// Cached today events so the 1-second title timer doesn't query EventKit each tick.
+    private var cachedTodayEvents: [CalendarEvent] = []
+
+    // MARK: - Initialization
+
+    init() {
+        Task { @MainActor [weak self] in
+            await self?.start()
+        }
+    }
 
     // MARK: - Lifecycle
 
@@ -78,7 +90,10 @@ final class MenuBarViewModel {
         hasStarted = true
 
         let granted = await calendarService.requestAccess()
-        if granted {
+        guard granted else { return }
+
+        await MainActor.run {
+            refreshTodayEventsCache()
             fetchEventsForSelectedDate()
             updateActiveMeeting()
             updateMenuBarTitle()
@@ -88,6 +103,7 @@ final class MenuBarViewModel {
     }
 
     func refresh() {
+        refreshTodayEventsCache()
         fetchEventsForSelectedDate()
         currentDate = Date()
         updateActiveMeeting()
@@ -130,57 +146,147 @@ final class MenuBarViewModel {
         NSApplication.shared.terminate(nil)
     }
 
-    // MARK: - Private Methods
+    // MARK: - Private — Event Cache
 
-    private func fetchEventsForSelectedDate() {
-        calendarService.fetchEvents(for: selectedDate, disabledCalendarIDs: settings.disabledCalendarIDs)
-    }
-
-    private func updateActiveMeeting() {
-        activeMeeting = findActiveMeeting()
-    }
-
-    private func updateMenuBarTitle() {
-        guard let next = nextUpcomingEvent() else {
-            menuBarTitle = "Cali"
+    /// Queries EventKit for today's timed events (respecting disabled calendars) and caches them.
+    private func refreshTodayEventsCache() {
+        guard calendarService.authorizationStatus == .fullAccess else {
+            cachedTodayEvents = []
             return
         }
 
-        let now = currentDate
-        let truncatedTitle = truncateTitle(next.title)
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfToday = calendar.startOfDay(for: now)
+        let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday)!
 
-        // Currently in a meeting
-        if next.startDate <= now && next.endDate > now {
-            if settings.showEventTitle {
-                menuBarTitle = "\(truncatedTitle) now"
+        let enabledCalendars = calendarService.availableCalendars.filter {
+            !settings.disabledCalendarIDs.contains($0.calendarIdentifier)
+        }
+
+        let predicate = calendarService.eventStore.predicateForEvents(
+            withStart: startOfToday,
+            end: endOfToday,
+            calendars: enabledCalendars.isEmpty ? nil : enabledCalendars
+        )
+
+        cachedTodayEvents = calendarService.eventStore.events(matching: predicate)
+            .map { CalendarEvent(from: $0) }
+            .filter { !$0.isAllDay }
+            .sorted { $0.startDate < $1.startDate }
+    }
+
+    // MARK: - Private — Event Queries (use cache)
+
+    /// Currently active events, sorted by start time.
+    private func activeEvents() -> [CalendarEvent] {
+        let now = Date()
+        return cachedTodayEvents
+            .filter { $0.startDate <= now && $0.endDate > now }
+            .sorted { $0.startDate < $1.startDate }
+    }
+
+    /// Future events that haven't started yet, sorted by start time.
+    private func upcomingEvents() -> [CalendarEvent] {
+        let now = Date()
+        return cachedTodayEvents
+            .filter { $0.startDate > now }
+            .sorted { $0.startDate < $1.startDate }
+    }
+
+    /// Events from a list that start at the same minute as the given date.
+    private func eventsStartingAtSameTime(as date: Date, in events: [CalendarEvent]) -> [CalendarEvent] {
+        let cal = Calendar.current
+        let targetMinute = cal.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        return events.filter {
+            cal.dateComponents([.year, .month, .day, .hour, .minute], from: $0.startDate) == targetMinute
+        }
+    }
+
+    // MARK: - Private — Menu Bar Title
+
+    private func updateMenuBarTitle() {
+        let now = Date()
+        let active = activeEvents()
+        let upcoming = upcomingEvents()
+
+        // ── HIGHEST PRIORITY: event starting in < 1 minute → second-by-second countdown ──
+        if let next = upcoming.first {
+            let secondsUntil = Int(next.startDate.timeIntervalSince(now))
+            if secondsUntil >= 0 && secondsUntil < 60 {
+                let sameStart = eventsStartingAtSameTime(as: next.startDate, in: upcoming)
+                if sameStart.count > 1 {
+                    menuBarTitle = "\(sameStart.count) events in \(secondsUntil)s"
+                } else {
+                    menuBarTitle = "\(truncateTitle(next.title)) in \(secondsUntil)s"
+                }
+                return
+            }
+        }
+
+        // ── HIGH PRIORITY: event starting in < 2 minutes → show name / count ──
+        if let next = upcoming.first {
+            let secsUntil = next.startDate.timeIntervalSince(now)
+            if secsUntil < 120 {
+                let sameStart = eventsStartingAtSameTime(as: next.startDate, in: upcoming)
+                let timeStr = formatTimeInterval(secsUntil)
+                if sameStart.count > 1 {
+                    menuBarTitle = "\(sameStart.count) events in \(timeStr)"
+                } else {
+                    menuBarTitle = "\(truncateTitle(next.title)) · in \(timeStr)"
+                }
+                return
+            }
+        }
+
+        // ── CURRENT: events in progress ──
+        if !active.isEmpty {
+            if active.count == 1 {
+                let remaining = active[0].endDate.timeIntervalSince(now)
+                let timeStr = formatTimeInterval(remaining)
+                let title = truncateTitle(active[0].title)
+                menuBarTitle = "\(title) · \(timeStr) left"
             } else {
-                menuBarTitle = "now"
+                menuBarTitle = "\(active.count) events now"
             }
             return
         }
 
-        // Time until next meeting
-        let interval = next.startDate.timeIntervalSince(now)
-        let timeStr: String
+        // ── UPCOMING: events more than 2 min away ──
+        if let next = upcoming.first {
+            let timeStr = formatTimeInterval(next.startDate.timeIntervalSince(now))
+            let sameStart = eventsStartingAtSameTime(as: next.startDate, in: upcoming)
 
-        if settings.showSeconds && interval < 3600 {
-            let mins = Int(interval / 60)
-            let secs = Int(interval.truncatingRemainder(dividingBy: 60))
-            timeStr = "\(mins)m \(secs)s left"
-        } else if interval < 60 {
-            timeStr = "<1m left"
-        } else if interval < 3600 {
-            timeStr = "\(Int(interval / 60))m left"
-        } else {
-            let hours = Int(interval / 3600)
-            let mins = Int(interval.truncatingRemainder(dividingBy: 3600) / 60)
-            timeStr = mins > 0 ? "\(hours)h \(mins)m left" : "\(hours)h left"
+            if sameStart.count > 1 {
+                menuBarTitle = "\(sameStart.count) events in \(timeStr)"
+            } else {
+                let title = truncateTitle(next.title)
+                if settings.showEventTitle {
+                    menuBarTitle = "\(title) · in \(timeStr)"
+                } else {
+                    menuBarTitle = "in \(timeStr)"
+                }
+            }
+            return
         }
 
-        if settings.showEventTitle {
-            menuBarTitle = "\(truncatedTitle) · \(timeStr)"
+        // ── No events remaining today ──
+        menuBarTitle = ""
+    }
+
+    private func formatTimeInterval(_ interval: TimeInterval) -> String {
+        let totalSeconds = max(Int(interval), 0)
+
+        if totalSeconds < 60 {
+            return "\(totalSeconds)s"
+        } else if totalSeconds < 3600 {
+            let mins = totalSeconds / 60
+            let secs = totalSeconds % 60
+            return secs > 0 ? "\(mins)m \(secs)s" : "\(mins)m"
         } else {
-            menuBarTitle = timeStr
+            let hours = totalSeconds / 3600
+            let mins = (totalSeconds % 3600) / 60
+            return mins > 0 ? "\(hours)h \(mins)m" : "\(hours)h"
         }
     }
 
@@ -191,55 +297,39 @@ final class MenuBarViewModel {
         return title
     }
 
-    /// Finds the currently in-progress meeting with a join link (always from today).
-    private func findActiveMeeting() -> CalendarEvent? {
-        guard calendarService.authorizationStatus == .fullAccess else { return nil }
+    // MARK: - Private — Active Meeting (banner)
 
+    private func updateActiveMeeting() {
         let now = Date()
-        let calendar = Calendar.current
-        let startOfToday = calendar.startOfDay(for: now)
-        let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday)!
-
-        let predicate = calendarService.eventStore.predicateForEvents(
-            withStart: startOfToday, end: endOfToday, calendars: nil
-        )
-        return calendarService.eventStore.events(matching: predicate)
-            .map { CalendarEvent(from: $0) }
-            .filter { !$0.isAllDay && $0.startDate <= now && $0.endDate > now && $0.meetingLink != nil }
+        activeMeeting = cachedTodayEvents
+            .filter { $0.startDate <= now && $0.endDate > now && $0.meetingLink != nil }
             .sorted { $0.startDate < $1.startDate }
             .first
     }
 
-    /// Finds the next upcoming event from TODAY (always today, regardless of selectedDate).
-    private func nextUpcomingEvent() -> CalendarEvent? {
-        guard calendarService.authorizationStatus == .fullAccess else { return nil }
+    // MARK: - Private — Data Fetching
 
-        let calendar = Calendar.current
-        let now = Date()
-        let startOfToday = calendar.startOfDay(for: now)
-        let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday)!
-
-        let predicate = calendarService.eventStore.predicateForEvents(
-            withStart: startOfToday,
-            end: endOfToday,
-            calendars: nil
-        )
-
-        return calendarService.eventStore.events(matching: predicate)
-            .map { CalendarEvent(from: $0) }
-            .filter { !$0.isAllDay && $0.endDate > now }
-            .sorted { $0.startDate < $1.startDate }
-            .first
+    private func fetchEventsForSelectedDate() {
+        calendarService.fetchEvents(for: selectedDate, disabledCalendarIDs: settings.disabledCalendarIDs)
     }
+
+    // MARK: - Private — Timers & Observers
 
     private func startTimers() {
-        countdownTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            self?.currentDate = Date()
-            self?.updateActiveMeeting()
+        // 1-second: update menu bar title (uses cached events, lightweight)
+        titleTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             self?.updateMenuBarTitle()
             self?.checkAutoJoin()
         }
 
+        // 10-second: update time indicator, refresh event cache, update active meeting
+        clockTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+            self?.currentDate = Date()
+            self?.refreshTodayEventsCache()
+            self?.updateActiveMeeting()
+        }
+
+        // 5-minute: full data refresh (re-fetch for timeline view)
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             self?.refresh()
         }
@@ -257,15 +347,18 @@ final class MenuBarViewModel {
 
     private func checkAutoJoin() {
         guard settings.autoJoinEnabled else { return }
-        guard let next = nextUpcomingEvent(), let link = next.meetingLink else { return }
-        guard !autoJoinedEventIDs.contains(next.id) else { return }
 
         let now = Date()
-        let timeUntilStart = next.startDate.timeIntervalSince(now)
+        let candidates = cachedTodayEvents
+            .filter { $0.meetingLink != nil && !autoJoinedEventIDs.contains($0.id) }
 
-        if timeUntilStart <= 15 && timeUntilStart >= -60 {
-            autoJoinedEventIDs.insert(next.id)
-            NSWorkspace.shared.open(link)
+        for event in candidates {
+            let timeUntilStart = event.startDate.timeIntervalSince(now)
+            if timeUntilStart <= 15 && timeUntilStart >= -60 {
+                autoJoinedEventIDs.insert(event.id)
+                NSWorkspace.shared.open(event.meetingLink!)
+                break
+            }
         }
     }
 }
