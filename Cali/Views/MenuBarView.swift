@@ -191,6 +191,15 @@ struct MenuBarView: View {
 
     private var footerView: some View {
         HStack(spacing: 12) {
+            Button(action: { viewModel.quit() }) {
+                Text("Quit")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.4))
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
             Button(action: {
                 viewModel.activateApp()
                 openWindow(id: "settings")
@@ -201,15 +210,6 @@ struct MenuBarView: View {
             }
             .buttonStyle(.plain)
             .help("Settings")
-
-            Spacer()
-
-            Button(action: { viewModel.quit() }) {
-                Text("Quit")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.4))
-            }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
