@@ -18,7 +18,7 @@
                BlueprintIdentifier = "B52DF8132F3BDEAA0018175E"
                BuildableName = "Cali.app"
                BlueprintName = "Cali"
-               ReferencedContainer = "container:cali.xcodeproj">
+               ReferencedContainer = "container:Cali.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -31,7 +31,7 @@
       shouldAutocreateTestPlan = "YES">
    </TestAction>
    <LaunchAction
-      buildConfiguration = "Release"
+      buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       launchStyle = "0"
@@ -47,7 +47,7 @@
             BlueprintIdentifier = "B52DF8132F3BDEAA0018175E"
             BuildableName = "Cali.app"
             BlueprintName = "Cali"
-            ReferencedContainer = "container:cali.xcodeproj">
+            ReferencedContainer = "container:Cali.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -64,7 +64,7 @@
             BlueprintIdentifier = "B52DF8132F3BDEAA0018175E"
             BuildableName = "Cali.app"
             BlueprintName = "Cali"
-            ReferencedContainer = "container:cali.xcodeproj">
+            ReferencedContainer = "container:Cali.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

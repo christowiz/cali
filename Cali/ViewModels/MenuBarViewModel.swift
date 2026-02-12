@@ -70,6 +70,7 @@ final class MenuBarViewModel {
     private var clockTimer: Timer?       // 10-second: time indicator + event cache
     private var refreshTimer: Timer?     // 5-minute: full calendar refresh
     private var eventStoreObserver: Any?
+    private var dayChangeObserver: Any?
     private var autoJoinedEventIDs: Set<String> = []
 
     /// Cached today events so the 1-second title timer doesn't query EventKit each tick.
@@ -343,6 +344,30 @@ final class MenuBarViewModel {
         ) { [weak self] _ in
             self?.refresh()
         }
+
+        dayChangeObserver = NotificationCenter.default.addObserver(
+            forName: .NSCalendarDayChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleDayChange()
+        }
+    }
+
+    /// Advances the timeline to the new day when midnight passes.
+    private func handleDayChange() {
+        let wasViewingToday = Calendar.current.isDateInYesterday(selectedDate)
+            || Calendar.current.isDateInToday(selectedDate)
+
+        if wasViewingToday {
+            selectedDate = Date()
+        }
+
+        currentDate = Date()
+        refreshTodayEventsCache()
+        fetchEventsForSelectedDate()
+        updateActiveMeeting()
+        updateMenuBarTitle()
     }
 
     private func checkAutoJoin() {
