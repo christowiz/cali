@@ -109,6 +109,15 @@ struct CalendarTimelineView: View {
         let layouts = eventLayouts
 
         return ZStack(alignment: .topLeading) {
+            // Background tap to dismiss detail card
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        selectedEvent = nil
+                    }
+                }
+
             // Event blocks
             ForEach(events) { event in
                 let layout = layouts[event.id] ?? OverlapLayout.LayoutInfo(column: 0, totalColumns: 1)
